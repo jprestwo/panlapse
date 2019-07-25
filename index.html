@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>PanLapse</title>
+	<style>
+		body{
+			font-family: Helvetica;
+			text-align:center;
+		}
+		ol{
+			width:400px;
+			text-align:left;
+			margin:0 auto;
+		}
+		.btn-group button {
+			background-color: #4CAF50; /* Green background */
+			border: 1px solid green; /* Green border */
+			color: white; /* White text */
+			/*padding: 10px 5px;*/ /* Some padding */
+			cursor: pointer; /* Pointer/hand icon */
+			float: center; /* Float the buttons side by side */
+			width: 100px;
+			height: 40px;
+			margin: 1px;
+		}
+
+		.btn-group button:not(:last-child) {
+		  border-right: none; /* Prevent double borders */
+		}
+		.btn-group button:disabled	{
+			background-color:#D3D3D3;
+		}
+
+		/* Clear floats (clearfix hack) */
+		.btn-group:after {
+		  content: "";
+		  clear: both;
+		  display: table;
+		}
+
+		/* Add a background color on hover */
+		.btn-group button:hover:not([disabled]) {
+		  background-color: #3e8e41;
+		}
+	</style>
+</head>
+<body>
+	<h1>PanLapse Control</h1>
+	<div class="btn-group">
+		<button id="connect">Connect</button>
+		<button id="toggle">Toggle</button>
+		<button id="led">LED</button>
+	</div>
+	<div class="btn-group">
+		<button id="left" style="font-size : 30px;" style="font-weight:bold" disabled>&larr;</button>
+		<button id="set" disabled>Set End</button>
+		<button id="right" style="font-size : 30px;" style="font-weight:bold" disabled>&rarr;</button>
+	</div>
+	<div class="btn-group">
+		<button id="cancel" disabled>Cancel</button>
+	</div>
+	<div class="btn-group">
+		<select id="time">
+		  <option value="0">5 Min</option>
+		  <option value="1">10 Min</option>
+		  <option value="2">30 Min</option>
+		  <option value="3">1 Hour</option>
+		  <option value="4">2 Hour</option>
+		  <option value="5">4 Hour</option>
+		  <option value="6">8 Hour</option>
+		</select>
+		<span id="duration">Completed: 0%</span>
+	</div>
+	<canvas data-processing-sources="processing.pde"></canvas>
+	<script>
+		//BLE
+		let service        	= 0x3925;
+		let notify_char 	= 0xABAB;
+		let led_char	 	= 0xDEDE;
+		let dir_char		= 0xAAAA;
+		let set_char		= 0xCCCC;
+		let cancel_char		= 0xDDDD;
+		let dur_char		= 0xEEEE;
+		let state_char		= 0xFFFF;
+		let ble_characteristic = null;
+		let led_characteristic = null;
+		let direction_characteristic = null;
+		let set_characteristic = null;
+		let duration_characteristic = null;
+		let state_characteristic = null;
+		let led_val = 0;
+		let left_down_busy = false;
+		let left_up_busy = false;
+		let left_down_pressed = false;
+		let left_up_pressed = false;
+		
+		let right_down_busy = false;
+		let right_up_busy = false;
+		let right_down_pressed = false;
+		let right_up_pressed = false;
+		
+		let set_state = 1;
+		
+		window.onload = () => {
+			document.getElementById('connect').onclick = connectBLE;
+			document.getElementById('toggle').onclick = toggle_button;
+			document.getElementById('led').onmouseup = led_button_up;
+			document.getElementById('led').onmousedown = led_button_down;
+			document.getElementById('left').onmouseup = left_button_up;
+			document.getElementById('left').onmousedown = left_button_down;
+			document.getElementById('right').onmouseup = right_button_up;
+			document.getElementById('right').onmousedown = right_button_down;
+			document.getElementById('set').onclick = set_button;
+			document.getElementById('cancel').onclick = cancel_button;
+			document.getElementById('time').onchange = time_changed;
+		}
+		
+		function handle_state_changed(event) {
+			var value = event.target.value;
+			console.log("State is " + value.getUint8(0));
+		}
+		
+		function handle_duration_changed(event) {
+			var value = event.target.value;
+			console.log("Duration is " + value.getUint8(0) + "%");
+			document.getElementById("duration").innerText = "Completed: " + value.getUint8(0) + "%";
+		}
+		
+		function time_changed() {
+			var val = document.getElementById("time").value;
+			console.log(val);
+			duration_characteristic.writeValue(new Uint8Array([val]));
+		}
+		
+		function cancel_button() {
+			cancel_characteristic.writeValue(new Uint8Array([1]));
+			document.getElementById('cancel').disabled = true;
+		}
+		
+		function set_button() {
+			set_characteristic.writeValue(new Int8Array([set_state]));
+			if (set_state == 1) {
+				document.getElementById('set').innerText = "Lapse!";
+				set_state = -1;
+			} else if (set_state == -1) {
+				document.getElementById('set').disabled = true;
+				document.getElementById('right').disabled = true;
+				document.getElementById('left').disabled = true;
+				document.getElementById('set').innerText = "Lapsing";
+				document.getElementById('cancel').disabled = false;
+				set_state = 1;
+			}
+		}
+
+		function led_button_down() {
+			led_characteristic.writeValue(new Uint8Array([1]));
+			console.log("Button Down");
+		}
+		
+		function led_button_up() {
+			led_characteristic.writeValue(new Uint8Array([0]));
+			console.log("Button Up");
+		}
+		
+		function right_button_down() {
+			if (right_up_busy)
+				return;
+
+			if (right_down_pressed)
+				return;
+
+			if (right_down_busy)
+				return;
+
+			right_down_busy = true;
+			direction_characteristic.writeValue(new Int8Array([1])).then(() => {
+				if (right_up_pressed) {
+					direction_characteristic.writeValue(new Int8Array([0])).then(() => {
+						right_up_pressed = false;
+						right_down_busy = false;
+					}).catch(error => {
+						console.log("ERROR: " + error);
+					});
+				}
+				right_down_busy = false;
+			}).catch(error => {
+				console.log("ERROR: " + error);
+			});
+			console.log("Right Down");
+		}
+		
+		function right_button_up() {
+			if (right_down_busy) {
+				right_up_pressed = true;
+				return;
+			}
+			
+			if (right_up_pressed)
+				return;
+
+			right_up_busy = true;
+			direction_characteristic.writeValue(new Int8Array([0])).then(() => {
+				right_up_busy = false;
+			}).catch(error => {
+				console.log("ERROR: " + error);
+			});
+			console.log("Right Up");
+		}
+
+		function left_button_down() {
+			if (left_up_busy)
+				return;
+
+			if (left_down_pressed)
+				return;
+
+			if (left_down_busy)
+				return;
+
+			left_down_busy = true;
+			direction_characteristic.writeValue(new Int8Array([-1])).then(() => {
+				if (left_up_pressed) {
+					direction_characteristic.writeValue(new Int8Array([0])).then(() => {
+						left_up_pressed = false;
+						left_down_busy = false;
+					}).catch(error => {
+						console.log("ERROR: " + error);
+					});
+				}
+				left_down_busy = false;
+			}).catch(error => {
+				console.log("ERROR: " + error);
+			});
+			console.log("Left Down");
+		}
+		
+		function left_button_up() {
+			if (left_down_busy) {
+				left_up_pressed = true;
+				return;
+			}
+			
+			if (left_up_pressed)
+				return;
+
+			left_up_busy = true;
+			direction_characteristic.writeValue(new Int8Array([0])).then(() => {
+				left_up_busy = false;
+			}).catch(error => {
+				console.log("ERROR: " + error);
+			});
+			console.log("Left Up");
+		}
+
+		function toggle_button() {
+			console.log("writing value");
+			ble_characteristic.writeValue(new Uint8Array([0])).catch(function(error) {
+				console.log(error);
+			});
+		}
+
+		function connectBLE(){
+			//BLE setup. Connect and get service/characteristic notifications
+			navigator.bluetooth.requestDevice({ filters: [{ services: [service] }] })
+			.then(device => {
+				device.addEventListener('gattserverdisconnected', onDisconnected);
+				return device.gatt.connect();
+			})
+			.then(server => server.getPrimaryService(service))
+			.then(function(service) {
+				service.getCharacteristic(notify_char).then(characteristic => {
+					ble_characteristic = characteristic;
+					return characteristic.startNotifications()
+					.then(_ => {
+						characteristic.addEventListener('characteristicvaluechanged',
+										handleCharacteristicValueChanged);
+						console.log("Added event listener");
+					});
+				});
+				service.getCharacteristic(led_char).then(characteristic => {
+					led_characteristic = characteristic;
+				});
+				service.getCharacteristic(dir_char).then(characteristic => {
+					direction_characteristic = characteristic;
+				});
+				service.getCharacteristic(set_char).then(characteristic => {
+					set_characteristic = characteristic;
+				});
+				service.getCharacteristic(cancel_char).then(characteristic => {
+					cancel_characteristic = characteristic;
+				});
+				service.getCharacteristic(dur_char).then(characteristic => {
+					duration_characteristic = characteristic;
+					return duration_characteristic.startNotifications().then(_ => {
+						duration_characteristic.addEventListener('characteristicvaluechanged',
+										handle_duration_changed);
+					});
+				});
+				service.getCharacteristic(state_char).then(characteristic => {
+					state_characteristic = characteristic;
+					return state_characteristic.startNotifications().then(_ => {
+						state_characteristic.addEventListener('characteristicvaluechanged',
+										handle_state_changed);
+						state_characteristic.readValue().then(view => {
+							console.log("State is: " + view.getUint8(0));
+							if (view.getUint8(0) == 2) {
+								document.getElementById('set').disabled = true;
+								document.getElementById('right').disabled = true;
+								document.getElementById('left').disabled = true;
+								document.getElementById('set').innerText = "Lapsing";
+								document.getElementById('cancel').disabled = false;
+								document.getElementById('time').disabled = true;
+								set_state = 1;
+							} else if (view.getUint8(0) == 1) {
+								document.getElementById("right").disabled = false;
+								document.getElementById("left").disabled = false;
+								document.getElementById("set").disabled = false;
+								document.getElementById('set').innerText = "Lapse!";
+							} else if (view.getUint8(0) == 0) {
+								document.getElementById("right").disabled = false;
+								document.getElementById("left").disabled = false;
+								document.getElementById("set").disabled = false;
+								document.getElementById('set').innerText = "Set End";
+							}
+						});
+					});
+				}).catch(error => {
+					console.log(error);
+				});
+				
+			})
+			.then(_ => {
+				console.log('Notifications have been started.');
+			})
+			.catch(error => { console.log(error); });
+			function handleCharacteristicValueChanged(event){
+				var value 	= event.target.value;
+				console.log("Value Changed " + value);
+				document.getElementById('set').disabled = false;
+				document.getElementById('set').innerText = "Set End";
+				document.getElementById('right').disabled = false;
+				document.getElementById('left').disabled = false;
+				document.getElementById('cancel').disabled = true;
+			}
+		}
+		
+		function onDisconnected(event) {
+			document.getElementById("right").disabled = true;
+			document.getElementById("left").disabled = true;
+			document.getElementById("set").disabled = true;
+		}
+	</script>
+</body>
+</html>
