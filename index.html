@@ -110,11 +110,25 @@
 			document.getElementById('left').onmousedown = left_button_down;
 			document.getElementById('right').onmouseup = right_button_up;
 			document.getElementById('right').onmousedown = right_button_down;
+			
+
+			document.getElementById('right').ontouchstart = right_button_down;
+			document.getElementById('right').ontouchend = right_button_up;
+			document.getElementById('left').ontouchstart = left_button_down;
+			document.getElementById('left').ontouchend = left_button_up;
+			
+
 			document.getElementById('set').onclick = set_button;
 			document.getElementById('cancel').onclick = cancel_button;
 			document.getElementById('time').onchange = time_changed;
+			
+			window.oncontextmenu = function(event) {
+				event.preventDefault();
+				event.stopPropagation();
+				return false;
+			};
 		}
-		
+
 		function handle_state_changed(event) {
 			var value = event.target.value;
 			console.log("State is " + value.getUint8(0));
