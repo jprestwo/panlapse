@@ -93,35 +93,35 @@
 		let left_up_busy = false;
 		let left_down_pressed = false;
 		let left_up_pressed = false;
-		
+
 		let right_down_busy = false;
 		let right_up_busy = false;
 		let right_down_pressed = false;
 		let right_up_pressed = false;
-		
+
 		let set_state = 1;
-		
+
 		window.onload = () => {
 			document.getElementById('connect').onclick = connectBLE;
 			document.getElementById('toggle').onclick = toggle_button;
-			document.getElementById('led').onmouseup = led_button_up;
-			document.getElementById('led').onmousedown = led_button_down;
+			document.getElementById('led').onpointerup = led_button_up;
+			document.getElementById('led').onpointerdown = led_button_down;
 			document.getElementById('left').onmouseup = left_button_up;
 			document.getElementById('left').onmousedown = left_button_down;
 			document.getElementById('right').onmouseup = right_button_up;
 			document.getElementById('right').onmousedown = right_button_down;
-			
+
 
 			document.getElementById('right').ontouchstart = right_button_down;
 			document.getElementById('right').ontouchend = right_button_up;
 			document.getElementById('left').ontouchstart = left_button_down;
 			document.getElementById('left').ontouchend = left_button_up;
-			
+
 
 			document.getElementById('set').onclick = set_button;
 			document.getElementById('cancel').onclick = cancel_button;
 			document.getElementById('time').onchange = time_changed;
-			
+
 			window.oncontextmenu = function(event) {
 				event.preventDefault();
 				event.stopPropagation();
@@ -133,24 +133,24 @@
 			var value = event.target.value;
 			console.log("State is " + value.getUint8(0));
 		}
-		
+
 		function handle_duration_changed(event) {
 			var value = event.target.value;
 			console.log("Duration is " + value.getUint8(0) + "%");
 			document.getElementById("duration").innerText = "Completed: " + value.getUint8(0) + "%";
 		}
-		
+
 		function time_changed() {
 			var val = document.getElementById("time").value;
 			console.log(val);
 			duration_characteristic.writeValue(new Uint8Array([val]));
 		}
-		
+
 		function cancel_button() {
 			cancel_characteristic.writeValue(new Uint8Array([1]));
 			document.getElementById('cancel').disabled = true;
 		}
-		
+
 		function set_button() {
 			set_characteristic.writeValue(new Int8Array([set_state]));
 			if (set_state == 1) {
@@ -170,12 +170,12 @@
 			led_characteristic.writeValue(new Uint8Array([1]));
 			console.log("Button Down");
 		}
-		
+
 		function led_button_up() {
 			led_characteristic.writeValue(new Uint8Array([0]));
 			console.log("Button Up");
 		}
-		
+
 		function right_button_down() {
 			if (right_up_busy)
 				return;
@@ -202,13 +202,13 @@
 			});
 			console.log("Right Down");
 		}
-		
+
 		function right_button_up() {
 			if (right_down_busy) {
 				right_up_pressed = true;
 				return;
 			}
-			
+
 			if (right_up_pressed)
 				return;
 
@@ -247,13 +247,13 @@
 			});
 			console.log("Left Down");
 		}
-		
+
 		function left_button_up() {
 			if (left_down_busy) {
 				left_up_pressed = true;
 				return;
 			}
-			
+
 			if (left_up_pressed)
 				return;
 
@@ -341,7 +341,7 @@
 				}).catch(error => {
 					console.log(error);
 				});
-				
+
 			})
 			.then(_ => {
 				console.log('Notifications have been started.');
@@ -357,7 +357,7 @@
 				document.getElementById('cancel').disabled = true;
 			}
 		}
-		
+
 		function onDisconnected(event) {
 			document.getElementById("right").disabled = true;
 			document.getElementById("left").disabled = true;
