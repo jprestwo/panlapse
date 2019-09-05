@@ -125,11 +125,11 @@
 			document.getElementById('cancel').onclick = cancel_button;
 			document.getElementById('time').onchange = time_changed;
 
-			window.oncontextmenu = function(event) {
-				event.preventDefault();
-				event.stopPropagation();
-				return false;
-			};
+			//window.oncontextmenu = function(event) {
+			//	event.preventDefault();
+			//	event.stopPropagation();
+			//	return false;
+			//};
 		}
 
 		function handle_state_changed(event) {
@@ -169,12 +169,13 @@
 			}
 		}
 
-		function led_button_down() {
+		function led_button_down(e) {
+			e.preventDefault();
 			led_characteristic.writeValue(new Uint8Array([1]));
 			console.log("Button Down");
 		}
 
-		function led_button_up() {
+		function led_button_up(e) {
 			led_characteristic.writeValue(new Uint8Array([0]));
 			console.log("Button Up");
 		}
